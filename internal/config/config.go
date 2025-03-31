@@ -5,48 +5,72 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/priyanshujain/infrasync/internal/providers"
+	"github.com/priyanshujain/infrasync/internal/providers/google"
 	"gopkg.in/yaml.v3"
 )
 
 // Config represents the main configuration structure
+type cfg struct {
+	Providers map[string]struct {
+		Projects []struct {
+			ID       string   `yaml:"id"`
+			Region   string   `yaml:"region"`
+			Services []string `yaml:"services"`
+		} `yaml:"projects"`
+		Credentials string `yaml:"credentials,omitempty"`
+	} `yaml:"providers"`
+}
+
 type Config struct {
-	Providers map[string]*Provider `yaml:"providers"`
-}
-
-// Provider represents a cloud provider configuration
-type Provider struct {
-	Projects    []*Project `yaml:"projects"`
-	Credentials string     `yaml:"credentials,omitempty"`
-}
-
-// Project represents a cloud project configuration
-type Project struct {
-	ID       string   `yaml:"id"`
-	Region   string   `yaml:"region"`
-	Services []string `yaml:"services"`
+	Providers []providers.Provider
+	cfg       cfg
 }
 
 // LoadFromFile loads configuration from a YAML file
-func LoadFromFile(path string) (*Config, error) {
+func LoadFromFile(path string) (Config, error) {
+	if path == "" {
+		p, err := defaultConfigPath()
+		if err != nil {
+			return Config{}, fmt.Errorf("failed to get default config path: %w", err)
+		}
+		path = p
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("error reading config file: %w", err)
+		return Config{}, fmt.Errorf("error reading config file: %w", err)
 	}
 
-	var config Config
+	var config cfg
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("error parsing config file: %w", err)
+		return Config{}, fmt.Errorf("error parsing config file: %w", err)
 	}
 
 	if err := validateConfig(&config); err != nil {
-		return nil, err
+		return Config{}, err
 	}
 
-	return &config, nil
+	var ps []providers.Provider
+	for name, provider := range config.Providers {
+		if providers.ProviderTypeGoogle.String() != name {
+			return Config{}, fmt.Errorf("unsupported provider: %s", name)
+		}
+		for _, project := range provider.Projects {
+			ps = append(ps, providers.Provider{
+				Type:      providers.ProviderTypeGoogle,
+				ProjectID: project.ID,
+			})
+		}
+	}
+
+	return Config{
+		Providers: ps,
+		cfg:       config,
+	}, nil
 }
 
 // validateConfig ensures the configuration is valid
-func validateConfig(config *Config) error {
+func validateConfig(config *cfg) error {
 	if len(config.Providers) == 0 {
 		return fmt.Errorf("no providers configured")
 	}
@@ -69,11 +93,38 @@ func validateConfig(config *Config) error {
 	return nil
 }
 
-// GetDefaultConfigPath returns the default configuration file path
-func GetDefaultConfigPath() string {
+func defaultConfigPath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
-	return filepath.Join(homeDir, ".infrasync", "config.yaml")
+	path := filepath.Join(homeDir, ".config", "infrasync", "config.yaml")
+
+	// if the file does not exist, create it
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return "", fmt.Errorf("failed to create config directory: %w", err)
+		}
+		if _, err := os.Create(path); err != nil {
+			return "", fmt.Errorf("failed to create config file: %w", err)
+		}
+
+		// write default config
+		defaultConfig := `providers:`
+		err = os.WriteFile(path, []byte(defaultConfig), 0644)
+		if err != nil {
+			return "", fmt.Errorf("failed to write default config: %w", err)
+		}
+	}
+	return path, nil
+}
+
+func (c *Config) GoogleServices(p providers.Provider) []google.Service {
+	var services []google.Service
+	for _, project := range c.cfg.Providers[p.Type.String()].Projects {
+		for _, service := range project.Services {
+			services = append(services, google.Service(service))
+		}
+	}
+	return services
 }

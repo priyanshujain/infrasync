@@ -1,4 +1,4 @@
-# infrasync - convert existing infra to IaC 
+# infrasync - convert existing infra to IaC
 
 
 Step 1
@@ -42,6 +42,7 @@ Creating an organized file structure for Terraform configurations with import bl
 - It will create import blocks and resource definitions by fetching it from cloud provider APIs
 - Follows best practices for Terraform organization
 
+```
 infrasync/
 ├── cmd/
 │   └── infrasync/
@@ -54,11 +55,10 @@ infrasync/
 ├── providers/
 │   ├── gcp/
 │       └── pubsub.go
+```
 
 ## Roadmap
 1. Support reading configuration from external sources
 2. for now we will only support gcp
 3. Generate accurate import blocks by querying existing resources
 4. Add more resource templates and service types
-
-
