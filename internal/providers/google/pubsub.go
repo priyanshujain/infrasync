@@ -150,6 +150,12 @@ func (c *pubSub) getTopicIAMBindings(ctx context.Context, topicName string) ([]R
 					sanitizeName(topicName), sanitizeName(roleSuffix)),
 				ID: fmt.Sprintf("projects/%s/topics/%s %s",
 					c.provider.ProjectID, topicName, role),
+				// Store attributes for drift detection
+				Attributes: map[string]interface{}{
+					"topic":   topicName,
+					"role":    role,
+					"members": members,
+				},
 			}
 			resources = append(resources, iamResource)
 		}
