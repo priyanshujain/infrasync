@@ -183,9 +183,6 @@ func processGoogleServices(ctx context.Context, services []string, projectID, ou
 			if count%10 == 0 {
 				slog.Info("Import progress", "service", service, "resourcesImported", count)
 			}
-			if count == 1 {
-				break
-			}
 		}
 
 		slog.Info("Import complete", "service", service, "resourcesImported", count)
