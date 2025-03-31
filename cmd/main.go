@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,7 +120,7 @@ func setupDirectoryStructure(outputPath string) error {
 }
 
 func processGoogleServices(ctx context.Context, services []string, projectID, outputPath string, tf tfimport.TerraformGenerator) error {
-	fmt.Printf("Processing Google Cloud services for project %s...\n", projectID)
+	slog.Info("Processing Google Cloud services", "project", projectID)
 
 	// create google directory
 	gcpDir := filepath.Join(outputPath, "resources", "gcp", projectID)
@@ -131,7 +132,7 @@ func processGoogleServices(ctx context.Context, services []string, projectID, ou
 	}
 
 	for _, service := range services {
-		fmt.Printf("Importing service: %s\n", service)
+		slog.Info("Importing service", "service", service)
 
 		serviceDir := filepath.Join(gcpDir, service)
 		if _, err := os.Stat(serviceDir); os.IsNotExist(err) {
@@ -149,20 +150,45 @@ func processGoogleServices(ctx context.Context, services []string, projectID, ou
 				return fmt.Errorf("failed to create PubSub client: %w", err)
 			}
 		default:
-			fmt.Printf("Warning: Service %s not yet implemented\n", service)
+			slog.Warn("Service not yet implemented", "service", service)
 			continue
 		}
 
-		resources, err := s.Import(ctx)
+		// Get resource iterator
+		resourceIter, err := s.Import(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to import resources: %w", err)
+			return fmt.Errorf("failed to create resource iterator: %w", err)
 		}
+		defer resourceIter.Close()
 
-		for _, r := range resources {
-			if err := tf.SaveImportBlock(r); err != nil {
+		// Process resources as they're generated
+		var count int
+		for {
+			resource, err := resourceIter.Next(ctx)
+			if err != nil {
+				return fmt.Errorf("error getting next resource: %w", err)
+			}
+
+			// No more resources
+			if resource == nil {
+				break
+			}
+
+			// Save the import block immediately
+			if err := tf.SaveImportBlock(*resource); err != nil {
 				return fmt.Errorf("failed to save import block: %w", err)
 			}
+
+			count++
+			if count%10 == 0 {
+				slog.Info("Import progress", "service", service, "resourcesImported", count)
+			}
+			if count == 1 {
+				break
+			}
 		}
+
+		slog.Info("Import complete", "service", service, "resourcesImported", count)
 	}
 
 	return nil

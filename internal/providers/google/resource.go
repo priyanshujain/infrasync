@@ -28,6 +28,5 @@ type Resource struct {
 	Service    Service
 	Name       string
 	ID         string
-	Attributes map[string]any
 	Dependents []Resource
 }
