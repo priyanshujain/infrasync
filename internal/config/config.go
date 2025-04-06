@@ -35,15 +35,25 @@ type Config struct {
 	cfg       cfg
 }
 
-// LoadFromFile loads configuration from a YAML file
-func LoadFromFile(path string) (Config, error) {
-	if path == "" {
-		p, err := defaultConfigPath()
-		if err != nil {
-			return Config{}, fmt.Errorf("failed to get default config path: %w", err)
-		}
-		path = p
+func Load() (Config, error) {
+	path, err := defaultConfigPath()
+	if err != nil {
+		return Config{}, fmt.Errorf("failed to get default config path: %w", err)
 	}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return Config{}, fmt.Errorf("failed to create config directory: %w", err)
+		}
+
+		if _, err := os.Create(path); err != nil {
+			return Config{}, fmt.Errorf("failed to create config file: %w", err)
+		}
+
+		fmt.Printf("Config file created at %s. Please fill in the required fields.\n", path)
+		fmt.Println("Template:")
+		fmt.Print(Template)
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("error reading config file: %w", err)
