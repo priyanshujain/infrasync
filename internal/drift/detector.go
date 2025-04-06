@@ -12,11 +12,11 @@ import (
 
 // ResourceState represents a resource's state in Terraform
 type ResourceState struct {
-	Type       string                 `json:"type"`
-	Name       string                 `json:"name"`
-	Provider   string                 `json:"provider"`
-	ID         string                 `json:"id"`
-	Attributes map[string]interface{} `json:"attributes"`
+	Type       string         `json:"type"`
+	Name       string         `json:"name"`
+	Provider   string         `json:"provider"`
+	ID         string         `json:"id"`
+	Attributes map[string]any `json:"attributes"`
 }
 
 // DriftResult represents the result of drift detection
@@ -30,8 +30,8 @@ type DriftResult struct {
 
 // Change represents a change in a resource attribute
 type Change struct {
-	OldValue interface{}
-	NewValue interface{}
+	OldValue any
+	NewValue any
 }
 
 // Detector detects drift between cloud resources and Terraform state
@@ -100,13 +100,13 @@ func (d *Detector) DetectResourceDrift(ctx context.Context, resources []*google.
 	var results []*DriftResult
 
 	// Parse state data
-	var state map[string]interface{}
+	var state map[string]any
 	if err := json.Unmarshal(stateData, &state); err != nil {
 		return nil, fmt.Errorf("failed to parse state data: %w", err)
 	}
 
 	// Extract resources from state
-	resourcesState, ok := state["resources"].([]interface{})
+	resourcesState, ok := state["resources"].([]any)
 	if !ok {
 		return nil, fmt.Errorf("invalid state format: resources not found")
 	}
@@ -114,7 +114,7 @@ func (d *Detector) DetectResourceDrift(ctx context.Context, resources []*google.
 	// Create map of state resources by ID
 	stateResourcesByID := make(map[string]*ResourceState)
 	for _, res := range resourcesState {
-		resMap, ok := res.(map[string]interface{})
+		resMap, ok := res.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -129,7 +129,7 @@ func (d *Detector) DetectResourceDrift(ctx context.Context, resources []*google.
 			Name:       resMap["name"].(string),
 			Provider:   resMap["provider"].(string),
 			ID:         id,
-			Attributes: resMap["attributes"].(map[string]interface{}),
+			Attributes: resMap["attributes"].(map[string]any),
 		}
 
 		stateResourcesByID[id] = stateResource

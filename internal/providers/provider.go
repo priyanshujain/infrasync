@@ -6,6 +6,12 @@ var (
 	ProviderTypeGoogle ProviderType = "google"
 )
 
+type BackendType string
+
+var (
+	BackendTypeGCS BackendType = "gcs"
+)
+
 func (p ProviderType) String() string {
 	return string(p)
 }
@@ -13,4 +19,10 @@ func (p ProviderType) String() string {
 type Provider struct {
 	Type      ProviderType
 	ProjectID string
+	Region    string
+}
+
+type Backend struct {
+	Type   BackendType
+	Bucket string
 }

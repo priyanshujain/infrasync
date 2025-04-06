@@ -12,6 +12,8 @@ import (
 
 // Config represents the main configuration structure
 type cfg struct {
+	Name      string `yaml:"name"`
+	Path      string `yaml:"path"`
 	Providers map[string]struct {
 		Projects []struct {
 			ID       string   `yaml:"id"`
@@ -20,9 +22,15 @@ type cfg struct {
 		} `yaml:"projects"`
 		Credentials string `yaml:"credentials,omitempty"`
 	} `yaml:"providers"`
+	Backend struct {
+		Type       string `yaml:"type"`
+		BucketName string `yaml:"bucket"`
+	} `yaml:"backend"`
 }
 
 type Config struct {
+	Name      string
+	Path      string
 	Providers []providers.Provider
 	cfg       cfg
 }
@@ -59,18 +67,36 @@ func LoadFromFile(path string) (Config, error) {
 			ps = append(ps, providers.Provider{
 				Type:      providers.ProviderTypeGoogle,
 				ProjectID: project.ID,
+				Region:    project.Region,
 			})
 		}
 	}
 
-	return Config{
+	c := Config{
+		Name:      config.Name,
+		Path:      config.Path,
 		Providers: ps,
 		cfg:       config,
-	}, nil
+	}
+
+	if err := c.validateGoogleCredentials(); err != nil {
+		return Config{}, fmt.Errorf("failed to validate google credentials: %w", err)
+	}
+
+	return c, nil
 }
 
 // validateConfig ensures the configuration is valid
 func validateConfig(config *cfg) error {
+	if config.Name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if config.Path == "" {
+		return fmt.Errorf("path is required")
+	}
+	if _, err := os.Stat(config.Path); os.IsNotExist(err) {
+		return fmt.Errorf("path %s does not exist", config.Path)
+	}
 	if len(config.Providers) == 0 {
 		return fmt.Errorf("no providers configured")
 	}
@@ -89,7 +115,6 @@ func validateConfig(config *cfg) error {
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -127,4 +152,55 @@ func (c *Config) GoogleServices(p providers.Provider) []google.Service {
 		}
 	}
 	return services
+}
+
+func (c *Config) ProjectPath() string {
+	return filepath.Join(c.Path, c.Name)
+}
+
+func (c *Config) DefaultProvider() providers.Provider {
+	if len(c.Providers) == 0 {
+		return providers.Provider{}
+	}
+	return c.Providers[0]
+}
+
+func (c *Config) DefaultBackend() providers.Backend {
+	if c.cfg.Backend.Type == "" {
+		return providers.Backend{}
+	}
+
+	return providers.Backend{
+		Type:   providers.BackendTypeGCS,
+		Bucket: c.cfg.Backend.BucketName,
+	}
+}
+
+func (c *Config) validateGoogleCredentials() error {
+
+	path := c.cfg.Providers[providers.ProviderTypeGoogle.String()].Credentials
+	if path != "" {
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute path: %w", err)
+		}
+
+		if _, err := os.Stat(absPath); os.IsNotExist(err) {
+			return fmt.Errorf("credentials file does not exist: %s", absPath)
+		}
+
+		os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", absPath)
+	}
+
+	err := google.ValidateCredentials()
+	if err != nil {
+		return fmt.Errorf("failed to validate credentials: %w", err)
+	}
+
+	bucketName := c.DefaultBackend().Bucket
+	if err := google.ValidateBackend(bucketName); err != nil {
+		return fmt.Errorf("failed to validate backend: %w", err)
+	}
+
+	return nil
 }

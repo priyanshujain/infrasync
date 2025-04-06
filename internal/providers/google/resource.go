@@ -30,5 +30,5 @@ type Resource struct {
 	ID         string
 	Dependents []Resource
 	// Attributes stores resource-specific attributes for drift detection
-	Attributes map[string]interface{}
+	Attributes map[string]any
 }

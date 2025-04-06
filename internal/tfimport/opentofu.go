@@ -101,20 +101,20 @@ func (r *OpenTofuRunner) GenerateResourceConfig(ctx context.Context) error {
 	}
 	
 	// Parse the state
-	var state map[string]interface{}
+	var state map[string]any
 	if err := json.Unmarshal(stdout.Bytes(), &state); err != nil {
 		return fmt.Errorf("failed to parse state JSON: %w", err)
 	}
 	
 	// Extract resources from state
-	resources, ok := state["values"].(map[string]interface{})["root_module"].(map[string]interface{})["resources"].([]interface{})
+	resources, ok := state["values"].(map[string]any)["root_module"].(map[string]any)["resources"].([]any)
 	if !ok {
 		return fmt.Errorf("failed to extract resources from state")
 	}
 	
 	// Generate configuration for each resource
 	for _, res := range resources {
-		resource := res.(map[string]interface{})
+		resource := res.(map[string]any)
 		if err := r.generateResourceFile(resource); err != nil {
 			r.logger.Error("Failed to generate resource file",
 				"resource", resource["address"],
@@ -126,7 +126,7 @@ func (r *OpenTofuRunner) GenerateResourceConfig(ctx context.Context) error {
 }
 
 // generateResourceFile generates a .tf file for a resource
-func (r *OpenTofuRunner) generateResourceFile(resource map[string]interface{}) error {
+func (r *OpenTofuRunner) generateResourceFile(resource map[string]any) error {
 	address := resource["address"].(string)
 	parts := strings.Split(address, ".")
 	resourceType := parts[0]
@@ -142,7 +142,7 @@ func (r *OpenTofuRunner) generateResourceFile(resource map[string]interface{}) e
 	filePath := filepath.Join(resourceDir, fmt.Sprintf("%s.tf", resourceName))
 	
 	// Build resource configuration
-	values := resource["values"].(map[string]interface{})
+	values := resource["values"].(map[string]any)
 	
 	// Convert values to HCL
 	var config strings.Builder
@@ -182,13 +182,13 @@ func (r *OpenTofuRunner) generateResourceFile(resource map[string]interface{}) e
 }
 
 // formatHCLValue formats a value for HCL
-func formatHCLValue(value interface{}) (string, error) {
+func formatHCLValue(value any) (string, error) {
 	switch v := value.(type) {
 	case string:
 		return fmt.Sprintf("\"%s\"", v), nil
 	case bool, int, float64:
 		return fmt.Sprintf("%v", v), nil
-	case []interface{}:
+	case []any:
 		if len(v) == 0 {
 			return "[]", nil
 		}
@@ -201,7 +201,7 @@ func formatHCLValue(value interface{}) (string, error) {
 			elements = append(elements, elemStr)
 		}
 		return fmt.Sprintf("[%s]", strings.Join(elements, ", ")), nil
-	case map[string]interface{}:
+	case map[string]any:
 		var pairs []string
 		for key, val := range v {
 			valStr, err := formatHCLValue(val)
