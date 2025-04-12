@@ -1,6 +1,6 @@
 # InfraSync
 
-InfraSync is a tool for converting existing cloud infrastructure to Terraform/OpenTofu code and maintaining synchronization between Infrastructure-as-Code and actual cloud resources.
+InfraSync is a tool for converting existing cloud infrastructure to Terraform code and maintaining synchronization between Infrastructure-as-Code and actual cloud resources.
 
 ## Features
 
@@ -14,11 +14,6 @@ InfraSync is a tool for converting existing cloud infrastructure to Terraform/Op
 - Separated imports and resources into different directories:
   ```
   project/
-  ├── imports/
-  │   └── [provider]/
-  │       └── [project]/
-  │           └── [service]/
-  │               └── resource.tf
   ├── resources/
   │   └── [provider]/
   │       └── [project]/
@@ -41,7 +36,7 @@ InfraSync is a tool for converting existing cloud infrastructure to Terraform/Op
 ### Initialize a new IaC repository
 
 ```bash
-infrasync init --project=my-gcp-project --state-bucket=my-tfstate-bucket
+infrasync init
 ```
 
 This creates a new repository with:
@@ -53,24 +48,13 @@ This creates a new repository with:
 ### Import existing resources
 
 ```bash
-infrasync import --project=my-gcp-project --services=pubsub
+infrasync import
 ```
 
 This discovers existing resources and generates:
 - Import blocks for Terraform
 - Directory structure for resources
 - Provider configurations
-
-### Detect and sync drift
-
-```bash
-infrasync sync --project=my-gcp-project --state-bucket=my-tfstate-bucket
-```
-
-This compares cloud resources with Terraform state:
-- Detects changes made directly in cloud console
-- Generates updated Terraform configurations
-- Creates PRs with changes (when run in GitHub Actions)
 
 ## GitHub Actions Integration
 

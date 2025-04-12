@@ -10,7 +10,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the main configuration structure
 type cfg struct {
 	Name      string `yaml:"name"`
 	Path      string `yaml:"path"`
@@ -96,7 +95,6 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// validateConfig ensures the configuration is valid
 func validateConfig(config *cfg) error {
 	if config.Name == "" {
 		return fmt.Errorf("name is required")
@@ -135,7 +133,6 @@ func defaultConfigPath() (string, error) {
 	}
 	path := filepath.Join(homeDir, ".config", "infrasync", "config.yaml")
 
-	// if the file does not exist, create it
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 			return "", fmt.Errorf("failed to create config directory: %w", err)
@@ -144,7 +141,6 @@ func defaultConfigPath() (string, error) {
 			return "", fmt.Errorf("failed to create config file: %w", err)
 		}
 
-		// write default config
 		defaultConfig := `providers:`
 		err = os.WriteFile(path, []byte(defaultConfig), 0644)
 		if err != nil {
