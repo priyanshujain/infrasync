@@ -5,11 +5,10 @@ import "github.com/priyanshujain/infrasync/internal/providers"
 type ResourceType string
 
 var (
-	ResourceTypePubSubSchema          ResourceType = "pubsub_schema"
-	ResourceTypePubSubTopic           ResourceType = "pubsub_topic"
-	ResourceTypePubSubTopicIAM        ResourceType = "pubsub_topic_iam"
-	ResourceTypePubSubSubscription    ResourceType = "pubsub_subscription"
-	ResourceTypePubSubSubscriptionIAM ResourceType = "pubsub_subscription_iam"
+	ResourceTypePubSubTopic                  ResourceType = "google_pubsub_topic"
+	ResourceTypePubSubTopicIAMBinding        ResourceType = "google_pubsub_topic_iam_binding"
+	ResourceTypePubSubSubscription           ResourceType = "google_pubsub_subscription"
+	ResourceTypePubSubSubscriptionIAMBinding ResourceType = "google_pubsub_subscription_iam_binding"
 )
 
 type Service string
@@ -29,4 +28,5 @@ type Resource struct {
 	Name       string
 	ID         string
 	Dependents []Resource
+	Attributes map[string]any
 }

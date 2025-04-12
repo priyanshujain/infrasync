@@ -1,18 +1,19 @@
-# infrasync - convert existing infra to IaC
+# InfraSync
 
+InfraSync is a tool for converting existing cloud infrastructure to Terraform code and maintaining synchronization between Infrastructure-as-Code and actual cloud resources.
 
-Step 1
-Creating an organized file structure for Terraform configurations with import blocks, focusing on scalability for multiple cloud providers and projects. Key points covered:
+## Features
+
+- Initialize new IaC repositories
+- Import existing GCP resources
+- Generate Terraform import blocks and resource definitions
+- Detect drift between cloud state and Terraform state
+- Create PRs with changes when drift is detected
 
 ## Structure Approach
 - Separated imports and resources into different directories:
   ```
   project/
-  ├── imports/
-  │   └── [provider]/
-  │       └── [project]/
-  │           └── [service]/
-  │               └── resource.tf
   ├── resources/
   │   └── [provider]/
   │       └── [project]/
@@ -24,41 +25,59 @@ Creating an organized file structure for Terraform configurations with import bl
   └── outputs.tf
   ```
 
-## Organization Strategy
-- Categorized by cloud provider (GCP, AWS, Azure)
-- Further divided by project/account
-- Then by service type (pubsub, storage, compute, etc.)
-- Individual resource files with matching names in both imports and resources directories
+## Supported Providers
 
-## Root Configuration
-- Single `main.tf` as orchestration point for SMEs
-- Providers configured with appropriate aliases
-- Organized variables and outputs by provider and project
+- Google Cloud Platform (GCP)
+  - PubSub (Topics, Subscriptions, IAM bindings)
+  - More services coming soon!
 
-## Go Implementation
-- Created a Go program to generate this structure, that will be pushed to a github repository
-- Supports multiple cloud providers and projects
-- cloud provider name and project name will be provided as input config
-- It will create import blocks and resource definitions by fetching it from cloud provider APIs
-- Follows best practices for Terraform organization
+## Usage
 
+### Initialize a new IaC repository
+
+```bash
+infrasync init
 ```
-infrasync/
-├── cmd/
-│   └── infrasync/
-│       └── main.go
-├── internal/
-│   ├── config/
-│   │   └── config.go
-│   └── generator/
-│       └── terraform.go
-├── providers/
-│   ├── gcp/
-│       └── pubsub.go
+
+This creates a new repository with:
+- Basic Terraform configuration
+- GCS backend configuration
+- GitHub Actions workflow for drift detection
+- Git repository initialization (optional)
+
+### Import existing resources
+
+```bash
+infrasync import
+```
+
+This discovers existing resources and generates:
+- Import blocks for Terraform
+- Directory structure for resources
+- Provider configurations
+
+## GitHub Actions Integration
+
+InfraSync includes GitHub Actions workflow templates for:
+- Automated drift detection
+- PR creation when changes are detected
+- Seamless integration with existing CI/CD pipelines
+
+## Development
+
+```bash
+# Build
+go build ./cmd/infrasync
+
+# Test
+go test ./...
+
+# Run locally
+go run ./cmd/infrasync/main.go
 ```
 
 ## Roadmap
-1. Support reading configuration from external sources
-2. for now we will only support gcp
-3. Generate accurate import blocks by querying existing resources
-4. Add more resource templates and service types
+1. Support for additional GCP services
+2. Support for other cloud providers (AWS, Azure)
+3. Comprehensive drift detection and reconciliation
+4. Enhanced resource templating and customization
