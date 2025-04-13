@@ -148,7 +148,7 @@ Infrastructure as Code repository managed with [InfraSync](https://github.com/pr
 
 To import existing resources:
 
-    infrasync import --project={{.ProjectID}} --services=pubsub
+    infrasync import --project={{.ProjectID}} --services=pubsub,cloudsql
 
 To detect drift and update configurations:
 
@@ -255,7 +255,7 @@ jobs:
         run: |
           infrasync sync \
             --project=${{ "{{" }} secrets.GCP_PROJECT {{ "}}" }} \
-            --services=pubsub \
+            --services=pubsub,cloudsql \
             --state-bucket=${{ "{{" }} secrets.GCS_STATE_BUCKET {{ "}}" }} \
             --state-key=terraform/state \
             --output=.
