@@ -68,14 +68,12 @@ func (r *generator) Import(ctx context.Context, resource google.Resource) error 
 	err := cmd.Run()
 	if err != nil {
 		slog.Error("Import failed",
-			"error", err,
 			"stderr", stderr.String())
-		return fmt.Errorf("failed to import resource: %w, stderr: %s", err, stderr.String())
+		return fmt.Errorf("failed to import resource: %w", err)
 	}
 
 	slog.Info("Import succeeded",
-		"resource", resource.ID,
-		"output", stdout.String())
+		"resource", resource.ID)
 
 	return nil
 }

@@ -47,9 +47,9 @@ func (cs *cloudSQL) Close() {
 type cloudSQLIterator struct {
 	ctx           context.Context
 	cloudsql      *cloudSQL
+	instances     []*sqladmin.DatabaseInstance
+	instanceIndex int
 	resourceQueue []Resource
-	pageToken     string
-	finished      bool
 	err           error
 	isClosed      bool
 }
@@ -72,74 +72,61 @@ func (it *cloudSQLIterator) Next(ctx context.Context) (*Resource, error) {
 		return &resource, nil
 	}
 
-	// Check if we already finished listing instances
-	if it.finished {
+	// Check if we have processed all instances
+	if it.instanceIndex >= len(it.instances) {
 		return nil, nil
 	}
 
-	instances, err := it.cloudsql.gcloudClient.ListInstances(it.cloudsql.provider.ProjectID)
-	if err != nil {
-		it.err = fmt.Errorf("error listing SQL instances: %w", err)
-		return nil, it.err
+	// Process next instance
+	instance := it.instances[it.instanceIndex]
+	it.instanceIndex++
+
+	if err := isImportable(instance); err != nil {
+		// Skip this instance and try the next one
+		//
+		slog.Info("Skipping instance due to terraform pre-check", "instance", instance.Name, "error", err)
+		return it.Next(ctx)
 	}
 
-	// Process instances
-	for _, instance := range instances {
-		if !isImportable(instance) {
-			continue
-		}
-
-		instanceName := instance.Name
-		id := fmt.Sprintf("projects/%s/instances/%s", it.cloudsql.provider.ProjectID, instanceName)
-		instanceResource := Resource{
-			Provider: it.cloudsql.provider,
-			Type:     ResourceTypeSQLInstance,
-			Service:  ServiceCloudSQL,
-			Name:     sanitizeName(instanceName),
-			ID:       id,
-			Attributes: map[string]any{
-				"project":          it.cloudsql.provider.ProjectID,
-				"name":             instanceName,
-				"database_version": instance.DatabaseVersion,
-				"region":           instance.Region,
-			},
-		}
-
-		if isRunning(instance) {
-			// Get databases for this instance
-			databases, err := it.cloudsql.getDatabases(it.ctx, instanceName)
-			if err != nil {
-				it.err = fmt.Errorf("error getting databases for instance %s: %w", instanceName, err)
-				return nil, it.err
-			}
-			if len(databases) > 0 {
-				instanceResource.Dependents = append(instanceResource.Dependents, databases...)
-			}
-
-			// Get users for this instance
-			users, err := it.cloudsql.getUsers(it.ctx, instanceName)
-			if err != nil {
-				it.err = fmt.Errorf("error getting users for instance %s: %w", instanceName, err)
-				return nil, it.err
-			}
-			if len(users) > 0 {
-				instanceResource.Dependents = append(instanceResource.Dependents, users...)
-			}
-		}
-
-		// Add to the queue
-		it.resourceQueue = append(it.resourceQueue, instanceResource)
+	instanceName := instance.Name
+	id := fmt.Sprintf("projects/%s/instances/%s", it.cloudsql.provider.ProjectID, instanceName)
+	instanceResource := Resource{
+		Provider: it.cloudsql.provider,
+		Type:     ResourceTypeSQLInstance,
+		Service:  ServiceCloudSQL,
+		Name:     sanitizeName(instanceName),
+		ID:       id,
+		Attributes: map[string]any{
+			"project":          it.cloudsql.provider.ProjectID,
+			"name":             instanceName,
+			"database_version": instance.DatabaseVersion,
+			"region":           instance.Region,
+		},
 	}
 
-	// If queue is still empty, we have no more instances
-	if len(it.resourceQueue) == 0 {
-		return nil, nil
+	if isRunning(instance) {
+		// Get databases for this instance
+		databases, err := it.cloudsql.getDatabases(it.ctx, instanceName)
+		if err != nil {
+			it.err = fmt.Errorf("error getting databases for instance %s: %w", instanceName, err)
+			return nil, it.err
+		}
+		if len(databases) > 0 {
+			instanceResource.Dependents = append(instanceResource.Dependents, databases...)
+		}
+
+		// Get users for this instance
+		users, err := it.cloudsql.getUsers(it.ctx, instance)
+		if err != nil {
+			it.err = fmt.Errorf("error getting users for instance %s: %w", instanceName, err)
+			return nil, it.err
+		}
+		if len(users) > 0 {
+			instanceResource.Dependents = append(instanceResource.Dependents, users...)
+		}
 	}
 
-	// Return the first resource from the queue
-	resource := it.resourceQueue[0]
-	it.resourceQueue = it.resourceQueue[1:]
-	return &resource, nil
+	return &instanceResource, nil
 }
 
 func (it *cloudSQLIterator) Close() error {
@@ -151,9 +138,17 @@ func (it *cloudSQLIterator) Close() error {
 }
 
 func (cs *cloudSQL) Import(ctx context.Context) (ResourceIterator, error) {
+	// Fetch all instances upfront
+	instances, err := cs.gcloudClient.ListInstances(cs.provider.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("error listing SQL instances: %w", err)
+	}
+
 	return &cloudSQLIterator{
 		ctx:           ctx,
 		cloudsql:      cs,
+		instances:     instances,
+		instanceIndex: 0,
 		resourceQueue: make([]Resource, 0),
 	}, nil
 }
@@ -191,12 +186,12 @@ func (cs *cloudSQL) getDatabases(ctx context.Context, instanceName string) ([]Re
 	return resources, nil
 }
 
-func (cs *cloudSQL) getUsers(ctx context.Context, instanceName string) ([]Resource, error) {
+func (cs *cloudSQL) getUsers(ctx context.Context, instance *sqladmin.DatabaseInstance) ([]Resource, error) {
 	var resources []Resource
 
-	resp, err := cs.service.Users.List(cs.provider.ProjectID, instanceName).Context(ctx).Do()
+	resp, err := cs.service.Users.List(cs.provider.ProjectID, instance.Name).Context(ctx).Do()
 	if err != nil {
-		return nil, fmt.Errorf("error listing users for instance %s: %w", instanceName, err)
+		return nil, fmt.Errorf("error listing users for instance %s: %w", instance.Name, err)
 	}
 
 	for _, user := range resp.Items {
@@ -206,15 +201,32 @@ func (cs *cloudSQL) getUsers(ctx context.Context, instanceName string) ([]Resour
 			continue
 		}
 
+		/*
+			SQL users for MySQL databases can be imported using the project, instance, host and name, e.g.
+				{{project_id}}/{{instance}}/{{host}}/{{name}}
+
+			SQL users for PostgreSQL databases can be imported using the project, instance and name, e.g.
+				{{project_id}}/{{instance}}/{{name}}
+		*/
+
+		var id string
+		if strings.HasPrefix(instance.DatabaseVersion, "POSTGRES") {
+			id = fmt.Sprintf("%s/%s/%s", cs.provider.ProjectID, instance.Name, userName)
+		} else if strings.HasPrefix(instance.DatabaseVersion, "MYSQL") {
+			id = fmt.Sprintf("%s/%s/%s/%s", cs.provider.ProjectID, instance.Name, user.Host, userName)
+		} else {
+			return nil, fmt.Errorf("unsupported database version %s", instance.DatabaseVersion)
+		}
+
 		userResource := Resource{
 			Provider: cs.provider,
 			Type:     ResourceTypeSQLUser,
 			Service:  ServiceCloudSQL,
-			Name:     fmt.Sprintf("%s_%s", sanitizeName(instanceName), sanitizeName(userName)),
-			ID:       fmt.Sprintf("%s:%s:%s", cs.provider.ProjectID, instanceName, userName),
+			Name:     fmt.Sprintf("%s_%s", sanitizeName(instance.Name), sanitizeName(userName)),
+			ID:       id,
 			Attributes: map[string]any{
 				"project":  cs.provider.ProjectID,
-				"instance": instanceName,
+				"instance": instance.Name,
 				"name":     userName,
 				"host":     user.Host,
 			},
@@ -225,38 +237,24 @@ func (cs *cloudSQL) getUsers(ctx context.Context, instanceName string) ([]Resour
 	return resources, nil
 }
 
-func isImportable(instance *sqladmin.DatabaseInstance) bool {
+func isImportable(instance *sqladmin.DatabaseInstance) error {
 	if instance.Settings == nil {
-		slog.Error("instance settings are nil", "instance", instance.Name)
-		return false
-	}
-
-	if instance.Settings.MaintenanceWindow == nil {
-		slog.Error("instance maintenance window is nil", "instance", instance.Name)
-		return false
+		return fmt.Errorf("instance settings are nil instance")
 	}
 
 	// NOTE: terraform expected settings.0.maintenance_window.0.day to be in the range (1 - 7), got 0
-	if instance.Settings.MaintenanceWindow.Day == 0 && instance.Settings.MaintenanceWindow.Hour == 0 &&
-		instance.Settings.MaintenanceWindow.UpdateTrack != "stable" {
-		slog.Error("instance maintenance window is invalid", "instance", instance.Name)
-		return false
+	if instance.Settings.MaintenanceWindow != nil && instance.Settings.MaintenanceWindow.Day == 0 &&
+		instance.Settings.MaintenanceWindow.Hour == 0 {
+		return fmt.Errorf("instance maintenance window is invalid instance(Any Window is not supported)")
 	}
 
 	// terraform expected settings.0.insights_config.0.query_string_length to be in the range (256 - 4500), got 0
-	if instance.Settings.InsightsConfig == nil {
-		slog.Error("instance insights config is nil", "instance", instance.Name)
-		return false
+	if instance.Settings.InsightsConfig != nil &&
+		instance.Settings.InsightsConfig.QueryStringLength == 0 {
+		return fmt.Errorf("instance insights query string length is zero")
 	}
 
-	if instance.Settings.InsightsConfig.QueryStringLength == 0 {
-		slog.Error("instance insights config is invalid", "instance", instance.Name)
-		return false
-	}
-
-	slog.Info("instance is importable", "instance", instance.Name, "insights_config", instance.Settings.InsightsConfig.QueryStringLength)
-
-	return true
+	return nil
 }
 
 func isRunning(instance *sqladmin.DatabaseInstance) bool {
