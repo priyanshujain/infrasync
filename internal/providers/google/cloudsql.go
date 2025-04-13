@@ -7,13 +7,24 @@ import (
 	"strings"
 
 	"github.com/priyanshujain/infrasync/internal/providers"
+	"github.com/priyanshujain/infrasync/internal/providers/google/gcloudclient/cloudsql"
 	"google.golang.org/api/option"
 	sqladmin "google.golang.org/api/sqladmin/v1beta4"
 )
 
+// NOTE: Google Cloud SQL access by using the Google Cloud client library is broken
+// It does not provide correct data.
+// Google has two types of client libraries
+// 1. auto-generated Go libraries
+// 2.  Cloud Client Libraries for Go
+// They recommend using the Cloud Client Libraries for Go for accessing gcp resources
+// but it does not support cloud sql as of now
+// So We will use gcloud (google cloud sdk) to access cloud sql resources
+
 type cloudSQL struct {
-	service  *sqladmin.Service
-	provider providers.Provider
+	service      *sqladmin.Service
+	provider     providers.Provider
+	gcloudClient *cloudsql.Client
 }
 
 func NewCloudSQL(ctx context.Context, provider providers.Provider) (*cloudSQL, error) {
@@ -23,8 +34,9 @@ func NewCloudSQL(ctx context.Context, provider providers.Provider) (*cloudSQL, e
 	}
 
 	return &cloudSQL{
-		service:  service,
-		provider: provider,
+		service:      service,
+		provider:     provider,
+		gcloudClient: cloudsql.NewClient(),
 	}, nil
 }
 
@@ -65,26 +77,14 @@ func (it *cloudSQLIterator) Next(ctx context.Context) (*Resource, error) {
 		return nil, nil
 	}
 
-	// Fetch next batch of instances
-	call := it.cloudsql.service.Instances.List(it.cloudsql.provider.ProjectID)
-	if it.pageToken != "" {
-		call = call.PageToken(it.pageToken)
-	}
-
-	resp, err := call.Context(it.ctx).Do()
+	instances, err := it.cloudsql.gcloudClient.ListInstances(it.cloudsql.provider.ProjectID)
 	if err != nil {
 		it.err = fmt.Errorf("error listing SQL instances: %w", err)
 		return nil, it.err
 	}
 
-	// Update pagination state
-	it.pageToken = resp.NextPageToken
-	if it.pageToken == "" {
-		it.finished = true
-	}
-
 	// Process instances
-	for _, instance := range resp.Items {
+	for _, instance := range instances {
 		if !isImportable(instance) {
 			continue
 		}
@@ -260,6 +260,5 @@ func isImportable(instance *sqladmin.DatabaseInstance) bool {
 }
 
 func isRunning(instance *sqladmin.DatabaseInstance) bool {
-	slog.Info("instance is running", "instance", instance.Name, "state", instance.State, "disk_size", instance.CurrentDiskSize, "max_disk_size", instance.MaxDiskSize)
-	return instance.State == "RUNNABLE" && instance.CurrentDiskSize > 0 && instance.MaxDiskSize > 0
+	return instance.State == "RUNNABLE"
 }
