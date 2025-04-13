@@ -29,6 +29,7 @@ InfraSync is a tool for converting existing cloud infrastructure to Terraform co
 
 - Google Cloud Platform (GCP)
   - PubSub (Topics, Subscriptions, IAM bindings)
+  - CloudSQL (Instances, Databases, Users)
   - More services coming soon!
 
 ## Usage

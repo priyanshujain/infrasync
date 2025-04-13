@@ -175,6 +175,12 @@ func importService(ctx context.Context, service google.Service) error {
 		if err != nil {
 			return fmt.Errorf("failed to create PubSub client: %w", err)
 		}
+	case "cloudsql":
+		s, err = google.NewCloudSQL(ctx, providers.Provider{
+			Type: providers.ProviderTypeGoogle, ProjectID: provider.ProjectID})
+		if err != nil {
+			return fmt.Errorf("failed to create CloudSQL client: %w", err)
+		}
 	default:
 		slog.Info("Service is not supported", "service", service)
 		return nil

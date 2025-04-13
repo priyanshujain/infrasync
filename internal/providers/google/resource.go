@@ -9,12 +9,18 @@ var (
 	ResourceTypePubSubTopicIAMBinding        ResourceType = "google_pubsub_topic_iam_binding"
 	ResourceTypePubSubSubscription           ResourceType = "google_pubsub_subscription"
 	ResourceTypePubSubSubscriptionIAMBinding ResourceType = "google_pubsub_subscription_iam_binding"
+	
+	// CloudSQL resource types
+	ResourceTypeSQLInstance                  ResourceType = "google_sql_database_instance"
+	ResourceTypeSQLDatabase                  ResourceType = "google_sql_database"
+	ResourceTypeSQLUser                      ResourceType = "google_sql_user"
 )
 
 type Service string
 
 var (
-	ServicePubSub Service = "pubsub"
+	ServicePubSub   Service = "pubsub"
+	ServiceCloudSQL Service = "cloudsql"
 )
 
 func (s Service) String() string {
