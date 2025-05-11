@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -18,7 +18,7 @@ import (
 
 var cfg config.Config
 
-func main() {
+func Execute() {
 	rootCmd := &cobra.Command{
 		Use:   "infrasync",
 		Short: "InfraSync - Convert existing infrastructure to IaC",
@@ -180,6 +180,12 @@ func importService(ctx context.Context, service google.Service) error {
 			Type: providers.ProviderTypeGoogle, ProjectID: provider.ProjectID})
 		if err != nil {
 			return fmt.Errorf("failed to create CloudSQL client: %w", err)
+		}
+	case "storage":
+		s, err = google.NewStorage(ctx, providers.Provider{
+			Type: providers.ProviderTypeGoogle, ProjectID: provider.ProjectID})
+		if err != nil {
+			return fmt.Errorf("failed to create Storage client: %w", err)
 		}
 	default:
 		slog.Info("Service is not supported", "service", service)
