@@ -21,9 +21,14 @@ func (c *Client) ImportStorage(ctx context.Context) error {
 	return c.ImportService(ctx, "storage")
 }
 
-// ImportSingleResource imports a single resource with the given type and ID
+// ImportSingleResource imports a single resource with the given type and ID.
+// TODO: Currently this is a placeholder that ignores resourceType and resourceID parameters
+// and imports all resources of the specified service. Future implementation will:
+// 1. Create a filtered resource iterator that returns only the specified resource
+// 2. Use the terraform importer to import only that specific resource
+// 3. Support proper error handling for non-existent resources
 func (c *Client) ImportSingleResource(ctx context.Context, service google.Service, resourceType string, resourceID string) error {
-	// This is a simplified implementation - a more robust one would actually import the single resource
-	// For now, we'll just call the service-specific import function
+	// IMPORTANT: This implementation currently ignores resourceType and resourceID
+	// It will be properly implemented in a future update
 	return c.ImportService(ctx, service)
 }

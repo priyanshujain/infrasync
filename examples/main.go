@@ -60,10 +60,14 @@ func main() {
 	}
 
 	// Import a specific resource
+	// Note: Individual resource import is not fully implemented yet
+	// Currently this will import all resources of the specified service
 	bucketName := "my-bucket"
 	if err := defaultClient.ImportSingleResource(ctx, "storage", "google_storage_bucket", bucketName); err != nil {
 		log.Fatalf("Error importing specific bucket: %v", err)
 	}
+	
+	// TODO: In the future, this will only import the specified resource
 
 	fmt.Println("All resources imported successfully!")
 	os.Exit(0)
