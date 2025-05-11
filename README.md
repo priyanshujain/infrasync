@@ -30,6 +30,7 @@ InfraSync is a tool for converting existing cloud infrastructure to Terraform co
 - Google Cloud Platform (GCP)
   - PubSub (Topics, Subscriptions, IAM bindings)
   - CloudSQL (Instances, Databases, Users)
+  - Storage (Buckets, IAM bindings)
   - More services coming soon!
 
 ## Usage
@@ -68,13 +69,16 @@ InfraSync includes GitHub Actions workflow templates for:
 
 ```bash
 # Build
-go build ./cmd/infrasync
+make build
+
+# Install
+go install
 
 # Test
-go test ./...
+make test
 
 # Run locally
-go run ./cmd/infrasync/main.go
+make run
 ```
 
 ## Roadmap
