@@ -11,7 +11,7 @@ GOFORMAT=$(GOCMD) fmt
 GOLINT=golangci-lint
 BINARY_NAME=infrasync
 CMD_DIR=./cmd
-MAIN_GO=./cmd/main.go
+MAIN_GO=./main.go
 
 # Build targets
 .PHONY: all build clean run test lint fmt help
@@ -21,6 +21,9 @@ all: clean fmt lint test build
 build:
 	@echo "Building..."
 	$(GOBUILD) -o $(BINARY_NAME) $(MAIN_GO)
+
+install:
+	$(GOCMD) install $(MAIN_GO)
 
 clean:
 	@echo "Cleaning..."

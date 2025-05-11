@@ -1,4 +1,4 @@
-package main
+package infrasync
 
 import (
 	"context"
@@ -13,58 +13,62 @@ import (
 	"github.com/priyanshujain/infrasync/internal/providers"
 	"github.com/priyanshujain/infrasync/internal/providers/google"
 	"github.com/priyanshujain/infrasync/internal/tfimport"
-	"github.com/spf13/cobra"
 )
 
-var cfg config.Config
+// Client represents the InfraSync client
+type Client struct {
+	Config config.Config
+}
 
-func main() {
-	rootCmd := &cobra.Command{
-		Use:   "infrasync",
-		Short: "InfraSync - Convert existing infrastructure to IaC",
-		Long:  `InfraSync is a tool for converting existing cloud infrastructure to Terraform code.`,
-	}
-
-	importCmd := &cobra.Command{
-		Use:   "import",
-		Short: "Import cloud resources and generate Terraform code",
-		RunE:  runImport,
-	}
-
-	initCmd := &cobra.Command{
-		Use:   "init",
-		Short: "Initialize a new IaC repository",
-		Long:  `Initialize a new Infrastructure as Code repository with Terraform configurations.`,
-		RunE:  runInit,
-	}
-
-	rootCmd.AddCommand(importCmd)
-	rootCmd.AddCommand(initCmd)
-
-	var err error
-	cfg, err = config.Load()
-	if err != nil {
-		fmt.Printf("Error loading config file: %v\n", err)
-
-		fmt.Println("Please format the config file as per the template.")
-		fmt.Println("Template:")
-		fmt.Print(config.Template)
-		os.Exit(1)
-	}
-
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+// NewClient creates a new InfraSync client with the provided configuration
+func NewClient(cfg config.Config) *Client {
+	return &Client{
+		Config: cfg,
 	}
 }
 
-func runImport(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+// DefaultClient creates a client with configuration loaded from the default path
+func DefaultClient() (*Client, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+	return NewClient(cfg), nil
+}
 
-	var absOutputPath = cfg.ProjectPath()
-	var provider = cfg.DefaultProvider()
+// Initialize creates a new IaC repository with Terraform configurations
+func (c *Client) Initialize(ctx context.Context) error {
+	outputPath := c.Config.ProjectPath()
 
-	provider = cfg.DefaultProvider()
+	absOutputPath, err := filepath.Abs(outputPath)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path for output: %w", err)
+	}
+
+	// Check if output directory is empty
+	if _, err := os.Stat(absOutputPath); err == nil {
+		entries, err := os.ReadDir(absOutputPath)
+		if err != nil {
+			return fmt.Errorf("failed to read output directory: %w", err)
+		}
+		if len(entries) > 0 {
+			return fmt.Errorf("output directory is not empty: %s", absOutputPath)
+		}
+	}
+
+	err = initialize.Init(c.Config)
+	if err != nil {
+		return fmt.Errorf("failed to initialize: %w", err)
+	}
+
+	slog.Info("Initialization completed.")
+	return nil
+}
+
+// Import imports cloud resources and generates Terraform code
+func (c *Client) Import(ctx context.Context) error {
+	absOutputPath := c.Config.ProjectPath()
+	provider := c.Config.DefaultProvider()
 
 	resourcesDir := filepath.Join(absOutputPath, "resources", provider.Type.String(), provider.ProjectID)
 
@@ -76,7 +80,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	services := cfg.GoogleServices(provider)
+	services := c.Config.GoogleServices(provider)
 
 	for _, service := range services {
 		serviceResourcesDir := filepath.Join(resourcesDir, service.String())
@@ -89,64 +93,18 @@ func runImport(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		if err := importService(ctx, service); err != nil {
-			return fmt.Errorf("failed to process Google services: %w", err)
+		if err := c.ImportService(ctx, service); err != nil {
+			return fmt.Errorf("failed to process service: %w", err)
 		}
 	}
 
 	return nil
 }
 
-func setupDirectoryStructure(outputPath string) error {
-	baseDirs := []string{
-		outputPath,
-	}
-
-	for _, dir := range baseDirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dir, err)
-		}
-	}
-
-	return nil
-}
-
-func runInit(cmd *cobra.Command, args []string) error {
-
-	outputPath := cfg.ProjectPath()
-
-	absOutputPath, err := filepath.Abs(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to get absolute path for output: %w", err)
-	}
-
-	if _, err := os.Stat(absOutputPath); err == nil {
-		entries, err := os.ReadDir(absOutputPath)
-		if err != nil {
-			return fmt.Errorf("failed to read output directory: %w", err)
-		}
-		if len(entries) > 0 {
-			return fmt.Errorf("output directory is not empty: %s", absOutputPath)
-		}
-	}
-
-	err = initialize.Init(cfg)
-	if err != nil {
-		panic(err)
-	}
-
-	slog.Info("Initialization completed.")
-	slog.Info("Next steps:")
-	slog.Info("1. Review and edit the generated files")
-	slog.Info("2. Run 'infrasync import' to import existing resources")
-	slog.Info("3. Run 'terraform init' and 'terraform apply' to apply the configuration")
-
-	return nil
-}
-
-func importService(ctx context.Context, service google.Service) error {
-	path := cfg.ProjectPath()
-	provider := cfg.DefaultProvider()
+// ImportService imports resources for a specific service
+func (c *Client) ImportService(ctx context.Context, service google.Service) error {
+	path := c.Config.ProjectPath()
+	provider := c.Config.DefaultProvider()
 
 	absOutputPath, err := filepath.Abs(path)
 	if err != nil {
@@ -180,6 +138,12 @@ func importService(ctx context.Context, service google.Service) error {
 			Type: providers.ProviderTypeGoogle, ProjectID: provider.ProjectID})
 		if err != nil {
 			return fmt.Errorf("failed to create CloudSQL client: %w", err)
+		}
+	case "storage":
+		s, err = google.NewStorage(ctx, providers.Provider{
+			Type: providers.ProviderTypeGoogle, ProjectID: provider.ProjectID})
+		if err != nil {
+			return fmt.Errorf("failed to create Storage client: %w", err)
 		}
 	default:
 		slog.Info("Service is not supported", "service", service)
